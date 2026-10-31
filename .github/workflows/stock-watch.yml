@@ -1,0 +1,39 @@
+name: Stock watch
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"      # every 10 minutes (GitHub may delay runs)
+  workflow_dispatch:
+    inputs:
+      test:
+        description: "Send a test email instead of checking stock"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write                # lets the job save its "already alerted" state
+
+concurrency:
+  group: stock-watch
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check stock
+        env:
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          ALERT_TO: ${{ secrets.ALERT_TO }}
+        run: python stock_watcher.py ${{ inputs.test && '--test-alert' || '' }}
+
+      - name: Save state
+        if: ${{ !inputs.test }}
+        run: |
+          git config user.name "stock-bot"
+          git config user.email "stock-bot@users.noreply.github.com"
+          git add .stock_state.json
+          git diff --cached --quiet || (git commit -m "Update stock state" && git push)
